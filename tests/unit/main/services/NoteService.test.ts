@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NoteService, DatabaseError } from '../../../../src/main/services/NoteService';
+import {
+  NoteService,
+  DatabaseError,
+  NoteNotFoundError,
+  InputValidationError,
+} from '../../../../src/main/services/NoteService';
 import type { NoteRepository } from '../../../../src/main/repositories/NoteRepository';
 import type { Note, CreateNoteInput } from '../../../../src/shared/types';
 
@@ -12,6 +17,10 @@ function createMockNoteRepository(
     findById: vi.fn(),
     findByType: vi.fn(),
     delete: vi.fn(),
+    update: vi.fn(),
+    insertSourceTag: vi.fn(),
+    linkNoteToSourceTag: vi.fn(),
+    findSourceTagsByNoteId: vi.fn(),
     ...overrides,
   } as unknown as NoteRepository;
 }
@@ -198,6 +207,160 @@ describe('NoteService', () => {
 
       // Act & Assert
       expect(() => service.getByType('fleeting')).toThrow(DatabaseError);
+    });
+  });
+
+  describe('delete', () => {
+    it('存在するノートを削除できる', () => {
+      // Arrange
+      const mockNote = createMockNote();
+      const mockRepo = createMockNoteRepository({
+        findById: vi.fn().mockReturnValue(mockNote),
+        delete: vi.fn(),
+      });
+      const service = new NoteService(mockRepo);
+
+      // Act
+      service.delete('test-uuid');
+
+      // Assert
+      expect(mockRepo.delete).toHaveBeenCalledWith('test-uuid');
+    });
+
+    it('存在しないノートを削除しようとすると NoteNotFoundError をスローする', () => {
+      // Arrange
+      const mockRepo = createMockNoteRepository({
+        findById: vi.fn().mockReturnValue(null),
+      });
+      const service = new NoteService(mockRepo);
+
+      // Act & Assert
+      expect(() => service.delete('nonexistent')).toThrow(NoteNotFoundError);
+    });
+
+    it('DB エラーが発生した場合は DatabaseError をスローする', () => {
+      // Arrange
+      const mockRepo = createMockNoteRepository({
+        findById: vi.fn().mockImplementation(() => {
+          throw new Error('SQLITE_ERROR');
+        }),
+      });
+      const service = new NoteService(mockRepo);
+
+      // Act & Assert
+      expect(() => service.delete('test-uuid')).toThrow(DatabaseError);
+    });
+  });
+
+  describe('promote', () => {
+    describe('Literature Note への変換', () => {
+      it('有効な出典タグがあれば Literature Note に変換できる', () => {
+        // Arrange
+        const fleetingNote = createMockNote({ type: 'fleeting', content: '文献メモ' });
+        const literatureNote = createMockNote({ type: 'literature', content: '文献メモ' });
+        const mockSourceTag = { id: 'tag-1', key: 'author', value: 'Ahrens', createdAt: '2026-03-11T00:00:00.000Z' };
+        const mockRepo = createMockNoteRepository({
+          findById: vi.fn().mockReturnValue(fleetingNote),
+          insertSourceTag: vi.fn().mockReturnValue(mockSourceTag),
+          linkNoteToSourceTag: vi.fn(),
+          update: vi.fn().mockReturnValue(literatureNote),
+        });
+        const service = new NoteService(mockRepo);
+
+        // Act
+        const result = service.promote('test-uuid', 'literature', {
+          sourceTagTexts: ['@author:Ahrens'],
+        });
+
+        // Assert
+        expect(result.type).toBe('literature');
+        expect(mockRepo.insertSourceTag).toHaveBeenCalledWith('author', 'Ahrens');
+        expect(mockRepo.linkNoteToSourceTag).toHaveBeenCalledWith('test-uuid', 'tag-1');
+      });
+
+      it('出典タグが空の場合は InputValidationError をスローする', () => {
+        // Arrange
+        const fleetingNote = createMockNote({ type: 'fleeting' });
+        const mockRepo = createMockNoteRepository({
+          findById: vi.fn().mockReturnValue(fleetingNote),
+        });
+        const service = new NoteService(mockRepo);
+
+        // Act & Assert
+        expect(() =>
+          service.promote('test-uuid', 'literature', { sourceTagTexts: [] })
+        ).toThrow(InputValidationError);
+      });
+
+      it('不正フォーマットのタグのみの場合は InputValidationError をスローする', () => {
+        // Arrange
+        const fleetingNote = createMockNote({ type: 'fleeting' });
+        const mockRepo = createMockNoteRepository({
+          findById: vi.fn().mockReturnValue(fleetingNote),
+        });
+        const service = new NoteService(mockRepo);
+
+        // Act & Assert
+        expect(() =>
+          service.promote('test-uuid', 'literature', { sourceTagTexts: ['invalid-format'] })
+        ).toThrow(InputValidationError);
+      });
+    });
+
+    describe('Permanent Note への変換', () => {
+      it('Fleeting Note を Permanent Note に変換できる', () => {
+        // Arrange
+        const fleetingNote = createMockNote({ type: 'fleeting', content: '恒久メモ' });
+        const permanentNote = createMockNote({ type: 'permanent', content: '恒久メモ' });
+        const mockRepo = createMockNoteRepository({
+          findById: vi.fn().mockReturnValue(fleetingNote),
+          update: vi.fn().mockReturnValue(permanentNote),
+        });
+        const service = new NoteService(mockRepo);
+
+        // Act
+        const result = service.promote('test-uuid', 'permanent', {});
+
+        // Assert
+        expect(result.type).toBe('permanent');
+        expect(mockRepo.update).toHaveBeenCalledWith(
+          'test-uuid',
+          expect.objectContaining({ type: 'permanent' })
+        );
+      });
+
+      it('content が指定された場合はその内容で上書きされる', () => {
+        // Arrange
+        const fleetingNote = createMockNote({ type: 'fleeting', content: '元の内容' });
+        const permanentNote = createMockNote({ type: 'permanent', content: '書き直した内容' });
+        const mockRepo = createMockNoteRepository({
+          findById: vi.fn().mockReturnValue(fleetingNote),
+          update: vi.fn().mockReturnValue(permanentNote),
+        });
+        const service = new NoteService(mockRepo);
+
+        // Act
+        service.promote('test-uuid', 'permanent', { content: '書き直した内容' });
+
+        // Assert
+        expect(mockRepo.update).toHaveBeenCalledWith(
+          'test-uuid',
+          expect.objectContaining({ content: '書き直した内容' })
+        );
+      });
+    });
+
+    it('存在しないノートを変換しようとすると NoteNotFoundError をスローする', () => {
+      // Arrange
+      const mockRepo = createMockNoteRepository({
+        findById: vi.fn().mockReturnValue(null),
+      });
+      const service = new NoteService(mockRepo);
+
+      // Act & Assert
+      expect(() =>
+        service.promote('nonexistent', 'permanent', {})
+      ).toThrow(NoteNotFoundError);
     });
   });
 });

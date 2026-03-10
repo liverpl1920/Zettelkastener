@@ -1,4 +1,4 @@
-import type { Note, CreateNoteInput, ValidationResult, ValidationError } from '@shared/types';
+import type { Note, CreateNoteInput, ValidationResult, ValidationError, PromoteInput } from '@shared/types';
 import type { NoteRepository } from '../repositories/NoteRepository';
 import { logger } from '../utils/logger';
 
@@ -123,4 +123,101 @@ export class NoteService {
 
     return { valid: errors.length === 0, errors };
   }
+
+  /**
+   * ノートを削除する
+   *
+   * @param id - 削除するノートの UUID
+   * @throws {NoteNotFoundError} 指定 ID のノートが存在しない場合
+   * @throws {DatabaseError} DB操作に失敗した場合
+   */
+  delete(id: string): void {
+    try {
+      const note = this.noteRepository.findById(id);
+      if (!note) {
+        throw new NoteNotFoundError(id);
+      }
+      this.noteRepository.delete(id);
+      logger.info('Note deleted', { noteId: id, type: note.type });
+    } catch (error) {
+      if (error instanceof NoteNotFoundError) throw error;
+      logger.error('Failed to delete note', { error, id });
+      throw new DatabaseError('Failed to delete note');
+    }
+  }
+
+  /**
+   * Fleeting Note を Literature または Permanent Note に昇格する
+   *
+   * 昇格後、元の Fleeting Note は processed_at を記録した上でノート種別を変更する。
+   *
+   * @param fleetingId - 昇格対象の Fleeting Note UUID
+   * @param targetType - 昇格先種別（'literature' | 'permanent'）
+   * @param input - 昇格入力（本文・出典タグ等）
+   * @returns 昇格後のノート
+   * @throws {NoteNotFoundError} Fleeting Note が存在しない場合
+   * @throws {InputValidationError} Literature Note で出典タグが未入力の場合
+   * @throws {DatabaseError} DB操作に失敗した場合
+   */
+  promote(fleetingId: string, targetType: 'literature' | 'permanent', input: PromoteInput): Note {
+    try {
+      const fleeting = this.noteRepository.findById(fleetingId);
+      if (!fleeting) {
+        throw new NoteNotFoundError(fleetingId);
+      }
+
+      // Literature Note: 出典タグ必須バリデーション
+      if (targetType === 'literature') {
+        const tags = input.sourceTagTexts ?? [];
+        const parsed = tags.map((t) => parseSourceTagText(t)).filter(Boolean);
+        if (parsed.length === 0) {
+          throw new InputValidationError(
+            'Literature Noteには出典タグが最低1つ必要です',
+            'sourceTagTexts',
+            '@author:著者名 または @title:タイトル 形式で入力してください'
+          );
+        }
+
+        // 出典タグを挿入してノートと紐付ける
+        const sourceTagIds: string[] = [];
+        for (const tag of parsed) {
+          if (!tag) continue;
+          const sourceTag = this.noteRepository.insertSourceTag(tag.key, tag.value);
+          this.noteRepository.linkNoteToSourceTag(fleetingId, sourceTag.id);
+          sourceTagIds.push(sourceTag.id);
+        }
+      }
+
+      // ノートの type / content / title / processed_at を更新する
+      const updatedNote = this.noteRepository.update(fleetingId, {
+        type: targetType,
+        content: input.content ?? fleeting.content,
+        title: input.title ?? fleeting.title,
+        processedAt: new Date().toISOString(),
+      });
+
+      logger.info('Note promoted', { noteId: fleetingId, targetType });
+      return updatedNote;
+    } catch (error) {
+      if (error instanceof NoteNotFoundError || error instanceof InputValidationError) throw error;
+      logger.error('Failed to promote note', { error, fleetingId, targetType });
+      throw new DatabaseError('Failed to promote note');
+    }
+  }
+}
+
+/**
+ * "@key:value" 形式の出典タグ文字列をパースする
+ *
+ * @param text - "@author:Ahrens" 等のタグ文字列
+ * @returns { key, value } または null（不正フォーマット）
+ */
+function parseSourceTagText(text: string): { key: string; value: string } | null {
+  const trimmed = text.trim();
+  const match = trimmed.match(/^@([^:]+):(.+)$/);
+  if (!match) return null;
+  const key = match[1].trim();
+  const value = match[2].trim();
+  if (!key || !value) return null;
+  return { key, value };
 }
