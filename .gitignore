@@ -35,6 +35,9 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+# WSL / Windows Zone.Identifier alternate data streams
+*:Zone.Identifier
+
 # Editor directories
 .idea/
 .vscode/*
