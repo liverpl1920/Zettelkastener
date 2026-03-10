@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Build outputs (electron-vite)
+out/
+
+# Distribution packages (electron-builder)
+dist/
+
+# SQLite database files
+*.db
+*.db-wal
+*.db-shm
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor directories
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
