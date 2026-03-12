@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { CreateNoteInput, IPCResult, Note, NoteType } from '@shared/types';
+import type { CreateNoteInput, IPCResult, Note, NoteType, PromoteInput } from '@shared/types';
 
 // Renderer Process から安全に Main Process を呼び出す API を公開する
 contextBridge.exposeInMainWorld('api', {
@@ -45,6 +45,30 @@ contextBridge.exposeInMainWorld('api', {
         ipcRenderer.removeListener('note:created', handler);
       };
     },
+
+    /**
+     * ノートを削除する
+     *
+     * @param id - 削除するノートの UUID
+     * @returns IPCResult<void>
+     */
+    delete: (id: string): Promise<IPCResult<void>> =>
+      ipcRenderer.invoke('note:delete', { id }),
+
+    /**
+     * Fleeting Note を Literature / Permanent Note に昇格する
+     *
+     * @param fleetingId - Fleeting Note UUID
+     * @param targetType - 昇格先種別
+     * @param input - 昇格入力
+     * @returns IPCResult<Note>
+     */
+    promote: (
+      fleetingId: string,
+      targetType: 'literature' | 'permanent',
+      input: PromoteInput
+    ): Promise<IPCResult<Note>> =>
+      ipcRenderer.invoke('note:promote', { fleetingId, targetType, input }),
   },
   window: {
     /**

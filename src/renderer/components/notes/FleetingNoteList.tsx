@@ -1,18 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import type { Note } from '@shared/types';
 import { useNoteStore } from '../../stores/useNoteStore';
+import { ConvertNoteModal } from './ConvertNoteModal';
+
+type ModalState =
+  | { open: false }
+  | { open: true; note: Note; targetType: 'literature' | 'permanent' };
 
 /**
  * Fleeting Note 一覧コンポーネント
  *
  * - マウント時に IPC 経由で Fleeting Note をすべて取得して表示する
  * - クイックキャプチャで保存した新しいノートは note:created イベントで即座に反映される
+ * - 各ノートの削除・変換（Literature / Permanent）を提供する
  */
 export function FleetingNoteList(): React.ReactElement {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [modal, setModal] = useState<ModalState>({ open: false });
+
   const upsertNote = useNoteStore((state) => state.upsertNote);
   const upsertNotes = useNoteStore((state) => state.upsertNotes);
+  const removeNote = useNoteStore((state) => state.removeNote);
   const notes = useNoteStore((state) =>
     state.getNotesByType('fleeting').sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -57,6 +66,24 @@ export function FleetingNoteList(): React.ReactElement {
     return unsubscribe;
   }, [upsertNote]);
 
+  const handleDelete = async (note: Note): Promise<void> => {
+    const confirmed = window.confirm(`「${note.title || note.content.slice(0, 30) || '（空のノート）'}」を削除しますか？`);
+    if (!confirmed) return;
+
+    const result = await window.api.notes.delete(note.id);
+    if (result.success) {
+      removeNote(note.id);
+    }
+  };
+
+  const handleOpenModal = (note: Note, targetType: 'literature' | 'permanent'): void => {
+    setModal({ open: true, note, targetType });
+  };
+
+  const handleCloseModal = (): void => {
+    setModal({ open: false });
+  };
+
   if (isLoading) {
     return (
       <div style={styles.empty}>
@@ -83,16 +110,36 @@ export function FleetingNoteList(): React.ReactElement {
   }
 
   return (
-    <ul style={styles.list} aria-label="Fleeting Note 一覧">
-      {notes.map((note) => (
-        <FleetingNoteItem key={note.id} note={note} />
-      ))}
-    </ul>
+    <>
+      <ul style={styles.list} aria-label="Fleeting Note 一覧">
+        {notes.map((note) => (
+          <FleetingNoteItem
+            key={note.id}
+            note={note}
+            onDelete={handleDelete}
+            onConvert={handleOpenModal}
+          />
+        ))}
+      </ul>
+      {modal.open && (
+        <ConvertNoteModal
+          note={modal.note}
+          targetType={modal.targetType}
+          onClose={handleCloseModal}
+        />
+      )}
+    </>
   );
 }
 
-function FleetingNoteItem({ note }: { note: Note }): React.ReactElement {
-  const preview = note.content.length > 100 ? note.content.slice(0, 100) + '…' : note.content;
+interface FleetingNoteItemProps {
+  note: Note;
+  onDelete: (note: Note) => void;
+  onConvert: (note: Note, targetType: 'literature' | 'permanent') => void;
+}
+
+function FleetingNoteItem({ note, onDelete, onConvert }: FleetingNoteItemProps): React.ReactElement {
+  const preview = note.content.length > 120 ? note.content.slice(0, 120) + '…' : note.content;
   const dateLabel = new Date(note.createdAt).toLocaleString('ja-JP', {
     year: 'numeric',
     month: '2-digit',
@@ -106,7 +153,30 @@ function FleetingNoteItem({ note }: { note: Note }): React.ReactElement {
       <time style={styles.date} dateTime={note.createdAt}>
         {dateLabel}
       </time>
-      <p style={styles.preview}>{preview || <em style={styles.empty}>（内容なし）</em>}</p>
+      <p style={styles.preview}>{preview || <em style={styles.emptyNote}>（内容なし）</em>}</p>
+      <div style={styles.actions}>
+        <button
+          style={{ ...styles.actionButton, ...styles.literatureButton }}
+          onClick={() => onConvert(note, 'literature')}
+          title="Literature Note に変換"
+        >
+          → Literature
+        </button>
+        <button
+          style={{ ...styles.actionButton, ...styles.permanentButton }}
+          onClick={() => onConvert(note, 'permanent')}
+          title="Permanent Note に変換"
+        >
+          → Permanent
+        </button>
+        <button
+          style={{ ...styles.actionButton, ...styles.deleteButton }}
+          onClick={() => onDelete(note)}
+          title="削除"
+        >
+          削除
+        </button>
+      </div>
     </li>
   );
 }
@@ -134,12 +204,43 @@ const styles = {
     marginBottom: 4,
   },
   preview: {
-    margin: 0,
+    margin: '0 0 10px',
     fontSize: 14,
     color: '#cdd6f4',
     lineHeight: 1.5,
     whiteSpace: 'pre-wrap' as const,
     wordBreak: 'break-word' as const,
+  },
+  emptyNote: {
+    color: '#45475a',
+    fontSize: 13,
+    fontStyle: 'italic' as const,
+  },
+  actions: {
+    display: 'flex',
+    gap: 6,
+    flexWrap: 'wrap' as const,
+  },
+  actionButton: {
+    border: 'none',
+    borderRadius: 4,
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '3px 10px',
+    cursor: 'pointer',
+    letterSpacing: '0.02em',
+  },
+  literatureButton: {
+    background: '#1e3a5f',
+    color: '#89b4fa',
+  },
+  permanentButton: {
+    background: '#1a3a25',
+    color: '#a6e3a1',
+  },
+  deleteButton: {
+    background: '#3a1a1e',
+    color: '#f38ba8',
   },
   empty: {
     textAlign: 'center' as const,

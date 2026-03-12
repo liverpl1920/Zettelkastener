@@ -1,7 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron';
-import type { CreateNoteInput, IPCResult, Note, NoteType } from '@shared/types';
+import type { CreateNoteInput, IPCResult, Note, NoteType, PromoteInput } from '@shared/types';
 import type { NoteService } from '../services/NoteService';
-import { DatabaseError } from '../services/NoteService';
+import { DatabaseError, NoteNotFoundError, InputValidationError } from '../services/NoteService';
 import { logger } from '../utils/logger';
 
 /**
@@ -71,6 +71,61 @@ export function registerNoteHandlers(
           success: false,
           error: { code: 'SYSTEM_ERROR', message: '予期しないエラーが発生しました' },
         };
+      }
+    }
+  );
+
+  // note:delete — ノートを削除する
+  ipcMain.handle(
+    'note:delete',
+    async (_event, { id }: { id: string }): Promise<IPCResult<void>> => {
+      try {
+        noteService.delete(id);
+        return { success: true };
+      } catch (error) {
+        if (error instanceof NoteNotFoundError) {
+          logger.error('IPC note:delete failed — not found', { error: error.message, id });
+          return { success: false, error: { code: error.code, message: error.message } };
+        }
+        if (error instanceof DatabaseError) {
+          logger.error('IPC note:delete failed', { error: error.message, id });
+          return { success: false, error: { code: error.code, message: error.message } };
+        }
+        logger.error('Unexpected error in note:delete', { error });
+        return { success: false, error: { code: 'SYSTEM_ERROR', message: '予期しないエラーが発生しました' } };
+      }
+    }
+  );
+
+  // note:promote — Fleeting Note を Literature / Permanent Note に昇格する
+  ipcMain.handle(
+    'note:promote',
+    async (
+      _event,
+      {
+        fleetingId,
+        targetType,
+        input,
+      }: { fleetingId: string; targetType: 'literature' | 'permanent'; input: PromoteInput }
+    ): Promise<IPCResult<Note>> => {
+      try {
+        const note = noteService.promote(fleetingId, targetType, input);
+        return { success: true, data: note };
+      } catch (error) {
+        if (error instanceof NoteNotFoundError) {
+          logger.error('IPC note:promote failed — not found', { error: error.message, fleetingId });
+          return { success: false, error: { code: error.code, message: error.message } };
+        }
+        if (error instanceof InputValidationError) {
+          logger.error('IPC note:promote validation failed', { error: error.message, fleetingId });
+          return { success: false, error: { code: error.code, message: error.message } };
+        }
+        if (error instanceof DatabaseError) {
+          logger.error('IPC note:promote failed', { error: error.message, fleetingId });
+          return { success: false, error: { code: error.code, message: error.message } };
+        }
+        logger.error('Unexpected error in note:promote', { error });
+        return { success: false, error: { code: 'SYSTEM_ERROR', message: '予期しないエラーが発生しました' } };
       }
     }
   );
