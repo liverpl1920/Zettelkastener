@@ -36,7 +36,7 @@ const styles = {
     minHeight: '100vh',
     background: '#1a1b26',
     color: '#cdd6f4',
-    fontFamily: 'system-ui, sans-serif',
+    fontFamily: "'Noto Sans CJK JP', 'Noto Sans JP', system-ui, sans-serif",
     padding: '0 0 40px',
   },
   header: {

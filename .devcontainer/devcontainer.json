@@ -24,6 +24,6 @@
       }
     }
   },
-  "postCreateCommand": "npm install",
+  "postCreateCommand": "sudo apt-get install -y fonts-noto-cjk && npm install",
   "remoteUser": "node"
 }
