@@ -140,7 +140,7 @@ const styles = {
     flexDirection: 'column' as const,
     height: '100vh',
     padding: '8px',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontFamily: "'Noto Sans CJK JP', 'Noto Sans JP', system-ui, -apple-system, sans-serif",
     backgroundColor: '#1a1a2e',
     color: '#e0e0e0',
     position: 'relative' as const,
