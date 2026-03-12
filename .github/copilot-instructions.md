@@ -117,7 +117,8 @@
 
 ### コマンド系プロンプト
 - `setup-project.prompt.md` - 初回セットアップ (6つの永続ドキュメント作成)
-- `add-feature.prompt.md` - 新機能追加 (完全自動実行モード)
+- `add-feature.prompt.md` - 新機能追加 (完全自動実行モード。Git準備→実装→PR作成まで自動)
+- `commit.prompt.md` - 単発コミット (ステージング済み変更をConventional Commits形式でコミット)
 - `review-docs.prompt.md` - ドキュメントのレビュー
 
 ## エージェント一覧 (`.github/agents/`)
@@ -132,12 +133,45 @@
 スキルはAgentが自動的に必要に応じてSKILL.mdを読み込みます（上記`<skills>`ブロック参照）。
 
 - `steering/SKILL.md` - ステアリングファイル管理
+- `git-workflow/SKILL.md` - Gitブランチ管理・コミット規約・PR作成
 - `prd-writing/SKILL.md` - PRD作成ガイド
 - `functional-design/SKILL.md` - 機能設計書作成ガイド
 - `architecture-design/SKILL.md` - アーキテクチャ設計書作成ガイド
 - `repository-structure/SKILL.md` - リポジトリ構造定義書作成ガイド
 - `development-guidelines/SKILL.md` - 開発ガイドライン作成ガイド
 - `glossary-creation/SKILL.md` - 用語集作成ガイド
+
+## Git戦略
+
+### ブランチ戦略
+
+- `main` - 常にリリース可能な状態を維持
+- `feature/[YYYYMMDD]-[タスク名]` - 新機能追加（ステアリングディレクトリ名と統一）
+- `fix/[YYYYMMDD]-[タスク名]` - バグ修正
+- `docs/[YYYYMMDD]-[タスク名]` - ドキュメントのみの変更
+- `refactor/[YYYYMMDD]-[タスク名]` - リファクタリング
+
+ブランチ名は `.steering/[YYYYMMDD]-[タスク名]/` と命名を統一し、トレーサビリティを確保する。
+
+### コミット規約（Conventional Commits）
+
+```
+[type]([scope]): [日本語の説明]
+```
+
+**type**: `feat` / `fix` / `docs` / `refactor` / `test` / `chore` / `style` / `perf`  
+**scope**: `notes` / `db` / `ipc` / `ui` / `store` / `capture` / `services` / `repos` / `gh` / `deps`
+
+詳細は `#skill-git-workflow`（`.github/skills/git-workflow/SKILL.md`）を参照。
+
+### コミットタイミング
+
+- tasklist.md の **Phase（フェーズ）単位** でコミットする
+- ドキュメント変更（`.github/`, `docs/`, `.steering/`）は実装コミットと **分離** する
+
+### 前提ツール
+
+- GitHub CLI (`gh`) - PR自動作成に使用（`gh --version` で確認、`gh auth login` で認証）
 
 ## ドキュメント管理の原則
 
@@ -198,5 +232,11 @@ When a user asks you to perform a task that falls within the domain of a skill, 
 <name>glossary-creation</name>
 <description>用語集を作成するための詳細ガイドとテンプレート。用語集作成時にのみ使用。</description>
 <file>.github/skills/glossary-creation/SKILL.md</file>
+</skill>
+
+<skill>
+<name>git-workflow</name>
+<description>Gitのブランチ命名規則・Conventional Commits規約・コミットタイミング・PR作成手順を定義するスキル。add-feature.prompt.mdのGitステップ、commit.prompt.mdで参照する。</description>
+<file>.github/skills/git-workflow/SKILL.md</file>
 </skill>
 </skills>
