@@ -11,6 +11,8 @@ interface NoteState {
   upsertNote: (note: Note) => void;
   /** 複数ノートを一括で追加・上書きする */
   upsertNotes: (notes: Note[]) => void;
+  /** ノートをストアから削除する */
+  removeNote: (id: string) => void;
   /** ノート種別フィルター済みリストを返す */
   getNotesByType: (type: NoteType) => Note[];
   /** 選択ノートを切り替える */
@@ -34,6 +36,17 @@ export const useNoteStore = create<NoteState>((set, get) => ({
         updated[note.id] = note;
       }
       return { notes: updated };
+    });
+  },
+
+  removeNote: (id: string): void => {
+    set((state) => {
+      const updated = { ...state.notes };
+      delete updated[id];
+      return {
+        notes: updated,
+        selectedNoteId: state.selectedNoteId === id ? null : state.selectedNoteId,
+      };
     });
   },
 
